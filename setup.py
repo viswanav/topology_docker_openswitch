@@ -73,7 +73,10 @@ setup(
         'A Topology OpenSwitch Node for topology_docker.'
     ),
     long_description=read('README.rst'),
-    url='https://github.com/HPENetworking/topology_docker_openswitch/tree/master/doc',
+    url=(
+        'https://github.com/HPENetworking/'
+        'topology_docker_openswitch/tree/master/doc'
+    ),
     keywords='topology_docker_openswitch',
 
     classifiers=[
