@@ -230,20 +230,27 @@ class OpenSwitchNode(DockerNode):
         # Save location of the shared dir in host
         self.shared_dir = shared_dir
 
-        # Add vtysh (default) and bash shell
+        # Add vtysh (default) shell
         # FIXME: Create a subclass to handle better the particularities of
         # vtysh, like prompt setup etc.
         self._shells['vtysh'] = DockerShell(
             self.container_id, 'vtysh', '(^|\n)switch(\([\-a-zA-Z0-9]*\))?#'
         )
+
+        # Add bash shells
+        initial_prompt = '(^|\n).*[#$] '
+
         self._shells['bash'] = DockerBashShell(
-            self.container_id, 'bash'
+            self.container_id, 'bash',
+            initial_prompt=initial_prompt
         )
         self._shells['bash_swns'] = DockerBashShell(
-            self.container_id, 'ip netns exec swns bash'
+            self.container_id, 'ip netns exec swns bash',
+            initial_prompt=initial_prompt
         )
         self._shells['vsctl'] = DockerBashShell(
             self.container_id, 'bash',
+            initial_prompt=initial_prompt,
             prefix='ovs-vsctl ', timeout=60
         )
 
