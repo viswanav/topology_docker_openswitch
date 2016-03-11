@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 #
-# Copyright (C) 2015 Hewlett Packard Enterprise Development LP
+# Copyright (C) 2015-2016 Hewlett Packard Enterprise Development LP
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -22,7 +22,7 @@ OpenSwitch Test for vlan related configurations.
 from __future__ import unicode_literals, absolute_import
 from __future__ import print_function, division
 
-from re import search
+from .helpers import wait_until_interface_up
 
 
 TOPOLOGY = """
@@ -59,8 +59,8 @@ def test_vlan(topology):
     assert hs1 is not None
     assert hs2 is not None
 
-    p8 = ops1.ports['8']
     p7 = ops1.ports['7']
+    p8 = ops1.ports['8']
 
     # Mark interfaces as enabled
     iface_enabled = ops1(
@@ -89,24 +89,22 @@ def test_vlan(topology):
         ctx.no_shutdown()
 
     with ops1.libs.vtysh.ConfigInterface('7') as ctx:
-        ctx.vlan_access(8)
+        ctx.vlan_access('8')
 
     with ops1.libs.vtysh.ConfigInterface('8') as ctx:
-        ctx.vlan_access(8)
+        ctx.vlan_access('8')
 
-    # FIXME: Use library
-    ops1('show interface {p7}'.format(**locals()))
-    ops1('show interface {p8}'.format(**locals()))
+    # Wait until interfaces are up
+    for portlbl in ['7', '8']:
+        wait_until_interface_up(ops1, portlbl)
 
-    # FIXME: Use library
-    vlan_result = ops1('show vlan 8')
-
-    assert search(
-        r'8\s+(vlan|VLAN)8\s+up\s+ok\s+({p8}|{p7}),\s*({p7}|{p8})'.format(
-            **locals()
-        ),
-        vlan_result
-    )
+    # Assert vlan status
+    vlan_status = ops1.libs.vtysh.show_vlan('8').get('8')
+    assert vlan_status is not None
+    assert vlan_status['vlan_id'] == '8'
+    assert vlan_status['status'] == 'up'
+    assert vlan_status['reason'] == 'ok'
+    assert sorted(vlan_status['ports']) == [p7, p8]
 
     # Configure host interfaces
     hs1.libs.ip.interface('1', addr='10.0.10.1/24', up=True)
@@ -114,9 +112,4 @@ def test_vlan(topology):
 
     # Test ping
     ping = hs1.libs.ping.ping(1, '10.0.10.2')
-
-    # Show if interface ever brought up
-    ops1('show interface {p7}'.format(**locals()))
-    ops1('show interface {p8}'.format(**locals()))
-
     assert ping['transmitted'] == ping['received'] == 1

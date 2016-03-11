@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 #
-# Copyright (C) 2015 Hewlett Packard Enterprise Development LP
+# Copyright (C) 2015-2016 Hewlett Packard Enterprise Development LP
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -21,6 +21,10 @@ OpenSwitch Test for simple ping between nodes.
 
 from __future__ import unicode_literals, absolute_import
 from __future__ import print_function, division
+
+from time import sleep
+
+from .helpers import wait_until_interface_up
 
 
 TOPOLOGY = """
@@ -57,11 +61,6 @@ def test_ping(topology):
     assert hs1 is not None
     assert hs2 is not None
 
-    p14 = sw1.ports['4']
-    p13 = sw1.ports['3']
-    p24 = sw2.ports['4']
-    p23 = sw2.ports['3']
-
     # Configure IP and bring UP host 1 interfaces
     hs1.libs.ip.interface('1', addr='10.0.10.1/24', up=True)
 
@@ -77,10 +76,6 @@ def test_ping(topology):
         ctx.ip_address('10.0.20.1/24')
         ctx.no_shutdown()
 
-    # FIXME: Assert up
-    sw1('show interface {p13}'.format(**locals()))
-    sw1('show interface {p14}'.format(**locals()))
-
     # Configure IP and bring UP switch 2 interfaces
     with sw2.libs.vtysh.ConfigInterface('3') as ctx:
         ctx.ip_address('10.0.20.2/24')
@@ -90,9 +85,9 @@ def test_ping(topology):
         ctx.ip_address('10.0.30.2/24')
         ctx.no_shutdown()
 
-    # FIXME: Assert up
-    sw2('show interface {p23}'.format(**locals()))
-    sw2('show interface {p24}'.format(**locals()))
+    # Wait until interfaces are up
+    for switch, portlbl in [(sw1, '3'), (sw1, '4'), (sw2, '3'), (sw2, '4')]:
+        wait_until_interface_up(switch, portlbl)
 
     # Set static routes in switches
     sw1.libs.ip.add_route('10.0.30.0/24', '10.0.20.2', shell='bash_swns')
@@ -102,7 +97,6 @@ def test_ping(topology):
     hs1.libs.ip.add_route('default', '10.0.10.2')
     hs2.libs.ip.add_route('default', '10.0.30.2')
 
-    # FIXME: interfaces are down for a while after configuration
-    #        causing the test to fail sometimes
+    sleep(1)
     ping = hs1.libs.ping.ping(1, '10.0.30.1')
     assert ping['transmitted'] == ping['received'] == 1
