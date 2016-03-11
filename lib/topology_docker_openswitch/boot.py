@@ -37,7 +37,6 @@ from shlex import split as shsplit
 from subprocess import check_call, check_output
 from socket import AF_UNIX, SOCK_STREAM, socket, gethostname
 
-import yaml
 
 config_timeout = 100
 swns_netns = '/var/run/netns/swns'
@@ -61,6 +60,8 @@ sock = None
 
 
 def create_interfaces():
+    import yaml
+
     # Read ports from hardware description
     with open('{}/ports.yaml'.format(hwdesc_dir), 'r') as fd:
         ports_hwdesc = yaml.load(fd)
