@@ -24,8 +24,8 @@ Custom Topology Docker Node for OpenSwitch.
 from __future__ import unicode_literals, absolute_import
 from __future__ import print_function, division
 
-from json import loads
 from shutil import copy
+from json import loads, dumps
 from os.path import dirname, normpath, abspath, join
 
 from topology_docker.node import DockerNode
@@ -112,17 +112,26 @@ class OpenSwitchNode(DockerNode):
         #. Assign an interface to each port label.
         #. Create remaining interfaces.
         """
-        # Write and execute setup script
+        # Write boot script input data
+        with open(join(self.shared_dir, 'ports.json'), 'w') as fd:
+            fd.write(dumps(self.ports))
+
+        # Write boot script
         root = dirname(normpath(abspath(__file__)))
         source = join(root, 'boot.py')
-        destination = '{}/boot.py'.format(self.shared_dir)
+        destination = join(self.shared_dir, 'boot.py')
         copy(source, destination)
 
-        # Execute bootscript
+        # Execute boot script
         self._docker_exec('python /tmp/boot.py -d')
+        # Should be more something like...
+        # self._docker_exec(
+        #     'python /tmp/boot.py -d '
+        #     '-i /tmp/ports.json -o /tmp/ports_mapping.json'
+        # )
 
         # Read back port mapping
-        port_mapping = '{}/port_mapping.json'.format(self.shared_dir)
+        port_mapping = join(self.shared_dir, 'ports_mapping.json')
         with open(port_mapping, 'r') as fd:
             mappings = loads(fd.read())
 

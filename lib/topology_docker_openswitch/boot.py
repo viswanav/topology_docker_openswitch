@@ -96,7 +96,7 @@ def create_interfaces():
         check_call(shsplit(netns_cmd_tpl.format(hwport=hwport)))
 
     # Writting mapping to file
-    with open('/tmp/port_mapping.json', 'w') as json_file:
+    with open('/tmp/ports_mapping.json', 'w') as json_file:
         json_file.write(dumps(mapping_ports))
 
     for hwport in hwports:
