@@ -63,6 +63,10 @@ def test_vlan(topology):
     p8 = ops1.ports['8']
 
     # Mark interfaces as enabled
+    # Note: It is possible that this test fails here with
+    #       pexpect.exceptions.TIMEOUT. There not much we can do, OpenSwitch
+    #       may have a race condition or something that makes this command to
+    #       freeze or to take more than 60 seconds to complete.
     iface_enabled = ops1(
         'set interface {p7} user_config:admin=up'.format(**locals()),
         shell='vsctl'
