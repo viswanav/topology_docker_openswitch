@@ -26,11 +26,16 @@ from __future__ import print_function, division
 
 from shutil import copy
 from json import loads, dumps
+from logging import getLogger
+from subprocess import Popen, PIPE
 from os.path import dirname, normpath, abspath, join
 
 from topology_docker.node import DockerNode
 from topology_docker.utils import ensure_dir
 from topology_docker.shell import DockerShell, DockerBashShell
+
+
+log = getLogger(__name__)
 
 
 class OpenSwitchNode(DockerNode):
@@ -106,11 +111,7 @@ class OpenSwitchNode(DockerNode):
 
     def _setup_system(self):
         """
-        Setup the OpenSwitch image for testing.
-
-        #. Wait for daemons to converge.
-        #. Assign an interface to each port label.
-        #. Create remaining interfaces.
+        Setup OpenSwitch image.
         """
         # Write boot script input data
         with open(join(self.shared_dir, 'ports.json'), 'w') as fd:
@@ -123,22 +124,35 @@ class OpenSwitchNode(DockerNode):
         copy(source, destination)
 
         # Execute boot script
-        self._docker_exec('python /tmp/boot.py -d')
-        # Should be more something like...
-        # self._docker_exec(
-        #     'python /tmp/boot.py -d '
-        #     '-i /tmp/ports.json -o /tmp/ports_mapping.json'
-        # )
+        boot = Popen(
+            [
+                'docker', 'exec', self.container_id,
+                'python', '/tmp/boot.py', source, destination
+            ],
+            stdin=PIPE, stdout=PIPE
+        )
+        stdout, stderr = boot.communicate()
+        if stdout:
+            log.info(stdout)
+        if boot.returncode != 0:
+            raise Exception(
+                'Boot script failed for node {}:: {}'.format(
+                    self.identifier, stderr
+                )
+            )
+        if stderr:
+            log.warning(
+                'Boot script registered stderr output without '
+                'failing on node {}'.format(
+                    self.identifier
+                )
+            )
+            log.debug(stderr)
 
         # Read back port mapping
         port_mapping = join(self.shared_dir, 'ports_mapping.json')
         with open(port_mapping, 'r') as fd:
-            mappings = loads(fd.read())
-
-        if hasattr(self, 'ports'):
-            self.ports.update(mappings)
-            return
-        self.ports = mappings
+            self.ports.update(loads(fd.read()))
 
     def set_port_state(self, portlbl, state):
         """
