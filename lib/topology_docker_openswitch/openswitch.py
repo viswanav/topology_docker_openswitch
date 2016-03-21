@@ -46,11 +46,15 @@ class OpenSwitchNode(DockerNode):
     shell (in addition to bash).
 
     See :class:`topology_docker.node.DockerNode`.
+
+    :param bool skip_ready_checks: Skip checks to determine if the image is
+     ready.
     """
 
     def __init__(
             self, identifier,
             image='topology/ops:latest', binds=None,
+            skip_ready_checks=False,
             **kwargs):
 
         # Determine shared directory
@@ -74,6 +78,9 @@ class OpenSwitchNode(DockerNode):
 
         # Save location of the shared dir in host
         self.shared_dir = shared_dir
+
+        # Save other parameters
+        self._skip_ready_checks = skip_ready_checks
 
         # Add vtysh (default) shell
         # FIXME: Create a subclass to handle better the particularities of
@@ -113,8 +120,10 @@ class OpenSwitchNode(DockerNode):
         """
         Setup OpenSwitch image.
         """
+        ports_file = join(self.shared_dir, 'ports.json')
+
         # Write boot script input data
-        with open(join(self.shared_dir, 'ports.json'), 'w') as fd:
+        with open(ports_file, 'w') as fd:
             fd.write(dumps(self.ports))
 
         # Write boot script
@@ -124,20 +133,24 @@ class OpenSwitchNode(DockerNode):
         copy(source, destination)
 
         # Execute boot script
-        boot = Popen(
-            [
-                'docker', 'exec', self.container_id,
-                'python', '/tmp/boot.py', source, destination
-            ],
-            stdin=PIPE, stdout=PIPE
-        )
+        cmd = [
+            'docker', 'exec', self.container_id,
+            'python', '/tmp/boot.py',
+            '/tmp/ports.json', 'swns'
+        ]
+
+        if self._skip_ready_checks:
+            cmd.append('--skip-ready-checks')
+
+        boot = Popen(cmd, stdin=PIPE, stdout=PIPE)
         stdout, stderr = boot.communicate()
         if stdout:
             log.info(stdout)
         if boot.returncode != 0:
+            log.fatal(stderr)
             raise Exception(
-                'Boot script failed for node {}:: {}'.format(
-                    self.identifier, stderr
+                'Boot script failed for node {}'.format(
+                    self.identifier
                 )
             )
         if stderr:
@@ -150,8 +163,7 @@ class OpenSwitchNode(DockerNode):
             log.debug(stderr)
 
         # Read back port mapping
-        port_mapping = join(self.shared_dir, 'ports_mapping.json')
-        with open(port_mapping, 'r') as fd:
+        with open(ports_file, 'r') as fd:
             self.ports.update(loads(fd.read()))
 
     def set_port_state(self, portlbl, state):

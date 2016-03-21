@@ -22,7 +22,8 @@ PLEASE NOTE:
 
     This is not part of the module. This file is a script that is copied as-is
     to the container. Once inside the container, it is executed with the
-    purpose of configure the container and assert that is it ready for testing.
+    purpose of configuring the container and assert that is it ready for
+    testing.
 """
 
 from __future__ import unicode_literals, absolute_import
