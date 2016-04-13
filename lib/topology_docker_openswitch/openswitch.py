@@ -27,7 +27,6 @@ from __future__ import print_function, division
 from json import loads
 
 from topology_docker.node import DockerNode
-from topology_docker.utils import ensure_dir
 from topology_docker.shell import DockerShell, DockerBashShell
 
 
@@ -208,13 +207,8 @@ class OpenSwitchNode(DockerNode):
             image='topology/ops:latest', binds=None,
             **kwargs):
 
-        # Determine shared directory
-        shared_dir = '/tmp/topology_{}_{}'.format(identifier, str(id(self)))
-        ensure_dir(shared_dir)
-
         # Add binded directories
         container_binds = [
-            '{}:/tmp'.format(shared_dir),
             '/dev/log:/dev/log',
             '/sys/fs/cgroup:/sys/fs/cgroup:ro'
         ]
@@ -226,9 +220,6 @@ class OpenSwitchNode(DockerNode):
             binds=';'.join(container_binds), hostname='switch',
             **kwargs
         )
-
-        # Save location of the shared dir in host
-        self.shared_dir = shared_dir
 
         # Add vtysh (default) shell
         # FIXME: Create a subclass to handle better the particularities of
