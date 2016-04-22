@@ -79,7 +79,7 @@ def create_interfaces():
 
     create_cmd_tpl = 'ip tuntap add dev {hwport} mode tap'
     netns_cmd_tpl = 'ip link set {hwport} netns swns'
-    rename_int = 'ip link set {portlbl} name {hwport}'
+    rename_int = 'ip netns exec swns ip link set {portlbl} name {hwport}'
 
     # Save port mapping information
     mapping_ports = {}
@@ -95,8 +95,8 @@ def create_interfaces():
                 **locals()
             )
         )
-        check_call(shsplit(rename_int.format(**locals())))
         check_call(shsplit(netns_cmd_tpl.format(hwport=hwport)))
+        check_call(shsplit(rename_int.format(**locals())))
 
     # Writting mapping to file
     with open('/tmp/port_mapping.json', 'w') as json_file:
