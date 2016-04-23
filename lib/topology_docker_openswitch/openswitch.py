@@ -192,6 +192,7 @@ class OpenSwitchNode(DockerNode):
         log.info(
             'Starting OpenSwitch image {}. Please wait...'.format(self._image)
         )
+        # FIXME: Provide logging line by line
         setup = Popen(cmd, stdin=PIPE, stdout=PIPE)
         stdout, stderr = setup.communicate()
         if stdout:
@@ -206,6 +207,9 @@ class OpenSwitchNode(DockerNode):
                 raise RuntimeException('Setup ')
 
             raise OpenSwitchImageException(
+                'The OpenSwitch image {} failed to pass the boot check: {}.'
+                ... you can disable it with ...
+                ... your image may be broken and/or unusable ...
                 'The given OpenSwitch image'.format(
                     self.identifier
                 )

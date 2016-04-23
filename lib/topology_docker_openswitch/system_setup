@@ -123,7 +123,7 @@ def create_interfaces(available):
     network namespace the interfaces created by the Topology Modular framework
     and creates the remaining using tuntap interfaces.
 
-    :param list available: List of available interfaces names.
+    :param OrderedDict available: Mapping of available interfaces names.
     :rtype: OrderedDict
     :return: A ordered dictionary that maps the original name of the interface
      with the new name.
@@ -239,11 +239,11 @@ def post_checks(timeout):
         ),
         (
             'CUR_CFG_SET',
-            lambda: ovsdb.cur_cfg_is_set,
+            lambda: ovsdb.cur_cfg_is_set(),
         ),
         (
             'SWITCHD_STATUS_ACTIVE',
-            lambda: switchd_status_is_active,
+            lambda: switchd_status_is_active(),
         )
     ))
 
