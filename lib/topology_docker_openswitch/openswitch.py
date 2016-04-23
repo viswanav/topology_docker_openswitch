@@ -31,7 +31,6 @@ from subprocess import Popen, PIPE
 from os.path import dirname, normpath, abspath, join
 
 from topology_docker.node import DockerNode
-from topology_docker.utils import ensure_dir
 from topology_docker.shell import DockerShell, DockerBashShell
 
 
@@ -47,23 +46,25 @@ class OpenSwitchNode(DockerNode):
 
     See :class:`topology_docker.node.DockerNode`.
 
-    :param bool skip_ready_checks: Skip checks to determine if the image is
-     ready.
+    :param bool skip_boot_checks: Skip checks to determine if the image is
+     ready to be tested.
+
+     .. warning::
+
+        Disabling this checks can cause commands to fail and race conditions
+        to crawl your tests. You have been warned.
+
+    :param int boot_checks_timeout: Timeout for a check to be ready in seconds.
     """
 
     def __init__(
             self, identifier,
             image='topology/ops:latest', binds=None,
-            skip_ready_checks=False,
+            skip_boot_checks=False, boot_checks_timeout=100,
             **kwargs):
-
-        # Determine shared directory
-        shared_dir = '/tmp/topology_{}_{}'.format(identifier, str(id(self)))
-        ensure_dir(shared_dir)
 
         # Add binded directories
         container_binds = [
-            '{}:/tmp'.format(shared_dir),
             '/dev/log:/dev/log',
             '/sys/fs/cgroup:/sys/fs/cgroup:ro'
         ]
@@ -76,17 +77,16 @@ class OpenSwitchNode(DockerNode):
             **kwargs
         )
 
-        # Save location of the shared dir in host
-        self.shared_dir = shared_dir
-
         # Save other parameters
-        self._skip_ready_checks = skip_ready_checks
+        self._skip_boot_checks = skip_boot_checks
+        self._boot_checks_timeout = boot_checks_timeout
 
         # Add vtysh (default) shell
         # FIXME: Create a subclass to handle better the particularities of
         # vtysh, like prompt setup etc.
         self._shells['vtysh'] = DockerShell(
-            self.container_id, 'vtysh', '(^|\n)switch(\([\-a-zA-Z0-9]*\))?#'
+            self.container_id, 'vtysh',
+            '(^|\n)switch(\([\-a-zA-Z0-9]*\))?#'
         )
 
         # Add bash shells
@@ -128,25 +128,25 @@ class OpenSwitchNode(DockerNode):
 
         # Write boot script
         root = dirname(normpath(abspath(__file__)))
-        source = join(root, 'boot.py')
-        destination = join(self.shared_dir, 'boot.py')
+        source = join(root, 'system_setup')
+        destination = join(self.shared_dir, 'system_setup')
         copy(source, destination)
 
         # Execute boot script
         cmd = [
             'docker', 'exec', self.container_id,
-            'python', '/tmp/boot.py',
-            '/tmp/ports.json', 'swns'
+            'python', '/tmp/system_setup',
+            '--available', '/tmp/ports.json'
         ]
 
-        if self._skip_ready_checks:
-            cmd.append('--skip-ready-checks')
+        if self._skip_boot_checks:
+            cmd.append('--skip-boot-checks')
 
-        boot = Popen(cmd, stdin=PIPE, stdout=PIPE)
-        stdout, stderr = boot.communicate()
+        setup = Popen(cmd, stdin=PIPE, stdout=PIPE)
+        stdout, stderr = setup.communicate()
         if stdout:
             log.info(stdout)
-        if boot.returncode != 0:
+        if setup.returncode != 0:
             log.fatal(stderr)
             raise Exception(
                 'Boot script failed for node {}'.format(

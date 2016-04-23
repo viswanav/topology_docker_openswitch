@@ -1,0 +1,249 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+#
+# Copyright (C) 2015-2016 Hewlett Packard Enterprise Development LP
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+
+"""
+OpenSwitch - Topology Docker OpenSwitch support node system setup script.
+
+PLEASE NOTE:
+
+    This file is a script that is copied as-is to the container.
+    Once inside the container, it is executed with the purpose of configuring
+    the container and assert that is it ready for testing.
+"""
+
+from __future__ import unicode_literals, absolute_import
+from __future__ import print_function, division
+
+from os.path import exists
+from threading import sleep
+from logging import getLogger
+from json import loads, dumps
+from socket import gethostname, socket, AF_UNIX, SOCK_STREAM
+
+
+__version__ = '1.0.0'
+
+log = getLogger(__name__)
+
+
+class Ovsdb(object):
+
+    OVSDB_SOCK = '/var/run/openvswitch/db.sock'
+
+    def __init__(self):
+        """
+        Ovsdb helper class to perform transactions.
+        """
+
+        self.query = {
+            'method': 'transact',
+            'params': [
+                'OpenSwitch',
+                {
+                    'op': 'select',
+                    'table': 'System',
+                    'where': [],
+                    'columns': ['cur_hw']
+                }
+            ],
+            'id': id(self)
+        }
+        self.sock = socket(AF_UNIX, SOCK_STREAM)
+        self.sock.connect(Ovsdb.OVSDB_SOCK)
+
+    def cur_cfg_is_set(self):
+        """
+        Check that the query for the cur_hw succeed.
+        """
+
+        self.sock.send(dumps(self.query))
+        response = loads(self.sock.recv(4096))
+        try:
+            return response['result'][0]['rows'][0]['cur_hw'] == 1
+        except IndexError:
+            return False
+
+
+def check_until_timeout(check, check_name, exit_code, timeout):
+    """
+    Execute a check until timeout or until the check returns positive.
+
+    :param function check: Check function to call repeatedly.
+    :param str check_name: Human readable name of the check.
+    :param int exit_code: If the check doesn't succeed, the program will quit
+     with this exit code.
+    :param int timeout: Time, in seconds, that the function will ask for the
+     check to become positive.
+    """
+    log.info('Starting check: {}'.format(check_name))
+
+    for i in range(0, timeout):
+        if check():
+            log.info('Check {} passed. Continue.'.format(check_name))
+            return True
+        sleep(0.1)
+
+    log.fatal('Timeout in check: {}'.format(check_name))
+    exit(exit_code)
+
+
+def create_interfaces(available):
+    """
+    Create OpenSwitch container interfaces.
+
+    This method parses the ``ports.yaml`` file, renames and moves to the swns
+    network namespace the interfaces created by the Topology Modular framework
+    and creates the remaining using tuntap interfaces.
+
+    :param list available: List of available interfaces names.
+    :rtype: OrderedDict
+    :return: A ordered dictionary that maps the original name of the interface
+     with the new name.
+    """
+    pass
+
+
+def pre_checks(timeout):
+    pre_checks = [
+        (
+            lambda: exists('/var/run/netns/swns'),
+            'SWNS_NETNS_CREATED',
+            -100
+        ),
+        (
+            lambda: exists('/etc/openswitch/hwdesc'),
+            'HWDESC_SYMLINK_CREATED',
+            -101
+        )
+    ]
+
+    for check, check_name, exit_code in pre_checks:
+        check_until_timeout(check, check_name, exit_code, timeout)
+
+
+def post_checks(timeout):
+    """
+    Checks that needs to be executed
+    """
+
+    post_checks = [
+        (
+            lambda: exists(Ovsdb.OVSDB_SOCK),
+            'OVSDB_SOCKET_CREATED',
+            -200
+        ),
+        (
+            lambda: exists('/var/run/openvswitch/ops-switchd.pid'),
+            'SWITCH_PID_FILE_CREATED',
+            -201
+        ),
+        (
+            lambda: gethostname() != 'switch',
+            'SWITCH_HOSTNAME_SET',
+            -202
+        ),
+        (
+            lambda: Ovsdb().cur_cfg_is_set,
+            'CUR_CFG_SET',
+            -203
+        )
+    ]
+
+    for check, check_name, exit_code in post_checks:
+        check_until_timeout(check, check_name, exit_code, timeout)
+
+
+def parse_args(argv=None):
+    """
+    Argument parsing routine.
+
+    :param argv: A list of argument strings.
+    :rtype argv: list
+    :return: A parsed and verified arguments namespace.
+    :rtype: :py:class:`argparse.Namespace`
+    """
+    from argparse import ArgumentParser
+
+    parser = ArgumentParser(
+        description=(
+            'Topology Modular - OpenSwitch Support Node Setup Script'
+        )
+    )
+    parser.add_argument(
+        '-v', '--verbose',
+        help='Increase verbosity level',
+        default=0,
+        action='count'
+    )
+    parser.add_argument(
+        '--version',
+        action='version',
+        version=(__version__)
+    )
+
+    parser.add_argument(
+        '--checks-timeout',
+        help='Timeout for a check to be ready in seconds',
+        default=100,
+        type=int
+    )
+    parser.add_argument(
+        '--skip-boot-checks',
+        help=(
+            'Coma-separated list of checks to skip. '
+            'Use ALL to disable all checks'
+        )
+    )
+    parser.add_argument(
+        '--available',
+        help='JSON file with available interfaces provided by the framework'
+    )
+
+    args = parser.parse_args(argv)
+    args = validate_args(args)
+    return args
+
+
+def validate_args(args):
+
+    if args.skip_boot_checks:
+        log.warning(
+            'Disabling this checks can cause commands to fail and race '
+            'conditions to crawl your tests. You have been warned.'
+        )
+
+    return args
+
+
+def main():
+    args = parse_args()
+
+    if not args.skip_boot_checks:
+        log.info('Executing pre-interfaces checks...')
+        pre_checks(args.timeout)
+
+    log.info('Creating interfaces...')
+    create_interfaces()
+
+    if not args.skip_boot_checks:
+        log.info('Executing post-interfaces checks...')
+        post_checks(args.timeout)
+
+
+if __name__ == '__main__':
+    main()
