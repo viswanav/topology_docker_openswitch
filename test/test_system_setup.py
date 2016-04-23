@@ -23,7 +23,7 @@ from __future__ import unicode_literals, absolute_import
 from __future__ import print_function, division
 
 from os import chdir
-from os.path import dirname
+from os.path import dirname, join
 from shutil import copy
 from ipdb import set_trace
 
@@ -40,17 +40,15 @@ def test_check_swns(tmpdir):
     Test the swns checker.
     """
 
-    system_setup = '/system_setup'
-    system_setup_path = ''.join(
-        [dirname(openswitch.__file__), system_setup]
-    )
-    system_setup_py_path = ''.join([str(tmpdir), system_setup, '.py'])
+    system_setup = 'system_setup'
+    system_setup_path = join(dirname(openswitch.__file__), system_setup)
+    system_setup_py_path = '{}.py'.format(join(str(tmpdir), system_setup))
 
     copy(system_setup_path, system_setup_py_path)
 
     chdir(str(tmpdir))
 
-    __import__(system_setup[1:])
+    __import__(system_setup)
 
     set_trace()
 
