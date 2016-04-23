@@ -53,13 +53,11 @@ class OpenSwitchNode(DockerNode):
 
     See :class:`topology_docker.node.DockerNode`.
 
-    :var: ALL_CHECKS
-
     :param int boot_checks_timeout: Timeout (in seconds) for a check to pass.
     :param str skip_boot_checks: Coma-separated list of checks to skip.
      Use ``ALL`` to skip all boot checks. Boot checks determine if the image is
-     ready to be tested. See the class attribute ALL_CHECKS for a complete list
-     of the boot checks available.
+     ready to be tested. See the class attribute ``OpenSwitch.ALL_CHECKS``
+     for a complete list of the boot checks available.
 
      .. warning::
 
@@ -76,6 +74,9 @@ class OpenSwitchNode(DockerNode):
         ('CUR_CFG_SET', 230),
         ('SWITCHD_STATUS_ACTIVE', 240),
     ))
+    """
+    Boot check identifiers.
+    """
 
     def __init__(
             self, identifier,
