@@ -28,6 +28,7 @@ from shutil import copy
 from json import loads, dumps
 from logging import getLogger
 from subprocess import Popen, PIPE
+from collections import OrderedDict
 from os.path import dirname, normpath, abspath, join
 
 from topology_docker.node import DockerNode
@@ -35,6 +36,12 @@ from topology_docker.shell import DockerShell, DockerBashShell
 
 
 log = getLogger(__name__)
+
+
+class OpenSwitchImageException(Exception):
+    """
+    Custom typed exception thrown when the image failed to setup.
+    """
 
 
 class OpenSwitchNode(DockerNode):
@@ -46,21 +53,34 @@ class OpenSwitchNode(DockerNode):
 
     See :class:`topology_docker.node.DockerNode`.
 
-    :param bool skip_boot_checks: Skip checks to determine if the image is
-     ready to be tested.
+    :var: ALL_CHECKS
+
+    :param int boot_checks_timeout: Timeout (in seconds) for a check to pass.
+    :param str skip_boot_checks: Coma-separated list of checks to skip.
+     Use ``ALL`` to skip all boot checks. Boot checks determine if the image is
+     ready to be tested. See the class attribute ALL_CHECKS for a complete list
+     of the boot checks available.
 
      .. warning::
 
-        Disabling this checks can cause commands to fail and race conditions
-        to crawl your tests. You have been warned.
-
-    :param int boot_checks_timeout: Timeout for a check to be ready in seconds.
+        Disabling checks can cause commands to fail and race conditions errors.
+        You have been warned.
     """
+
+    ALL_CHECKS = OrderedDict((
+        ('SWNS_NETNS_CREATED', 100),
+        ('HWDESC_SYMLINK_CREATED', 110),
+        ('OVSDB_SOCKET_CREATED', 200),
+        ('SWITCHD_PID_FILE_CREATED', 210),
+        ('SWITCH_HOSTNAME_SET', 220),
+        ('CUR_CFG_SET', 230),
+        ('SWITCHD_STATUS_ACTIVE', 240),
+    ))
 
     def __init__(
             self, identifier,
             image='topology/ops:latest', binds=None,
-            skip_boot_checks=False, boot_checks_timeout=30,
+            boot_checks_timeout=30, skip_boot_checks=None,
             **kwargs):
 
         # Add binded directories
@@ -79,8 +99,32 @@ class OpenSwitchNode(DockerNode):
         )
 
         # Save other parameters
-        self._skip_boot_checks = skip_boot_checks
         self._boot_checks_timeout = boot_checks_timeout
+        self._skip_boot_checks = skip_boot_checks
+
+        # Interpret and validate boot checks deactivations
+        if skip_boot_checks is not None:
+
+            skipped = skip_boot_checks.split(',')
+            if 'ALL' in skipped:
+                skipped = list(OpenSwitchNode.ALL_CHECKS.keys())
+            else:
+                for check in skipped:
+                    if check not in OpenSwitchNode.ALL_CHECKS:
+                        raise Exception(
+                            'Unknown boot check "{}"'.format(check)
+                        )
+
+            self._skip_boot_checks = sorted(skipped)
+
+            log.warning(
+                (
+                    'Some boot checks are disabled on node {}: (!!)\n{}'
+                    'The omission of this checks can cause commands to fail '
+                    'and race conditions will crawl and eat your kittens.\n'
+                    'YOU HAVE BEEN WARNED!'
+                ).format(','.join(self._skip_boot_checks), self.identifier)
+            )
 
         # Add vtysh (default) shell
         # FIXME: Create a subclass to handle better the particularities of
@@ -137,11 +181,13 @@ class OpenSwitchNode(DockerNode):
         cmd = [
             'docker', 'exec', self.container_id,
             'python', '/tmp/system_setup',
-            '--available', '/tmp/ports.json'
-        ]
+            '--available', '/tmp/ports.json',
+            '--checks-timeout', self._boot_checks_timeout
+        ]  # FIXME: Relay verbosity level
 
-        if self._skip_boot_checks:
+        if self._skip_boot_checks is not None:
             cmd.append('--skip-boot-checks')
+            cmd.append(','.join(self._skip_boot_checks))
 
         log.info(
             'Starting OpenSwitch image {}. Please wait...'.format(self._image)
@@ -150,25 +196,27 @@ class OpenSwitchNode(DockerNode):
         stdout, stderr = setup.communicate()
         if stdout:
             log.info(stdout)
-        if setup.returncode != 0:
-            log.fatal(stderr)
-            raise Exception(
-                'Boot script failed for node {}'.format(
-                    self.identifier
-                )
-            )
         if stderr:
-            log.warning(
-                'Boot script registered stderr output without '
-                'failing on node {}'.format(
+            log.error(stderr)
+
+        # FIXME: Determine return code and show relevant message
+        """
+        if setup.returncode != 0:
+            if setup.returncode not in OpenSwitch.ALL_CHECKS.values():
+                raise RuntimeException('Setup ')
+
+            raise OpenSwitchImageException(
+                'The given OpenSwitch image'.format(
                     self.identifier
                 )
             )
-            log.debug(stderr)
+        """
 
         # Read back port mapping
         with open(ports_file, 'r') as fd:
-            self.ports.update(loads(fd.read()))
+            new_mapping = loads(fd.read(), object_pairs_hook=OrderedDict)
+            self.ports.clear()
+            self.ports.update(new_mapping)
 
     def set_port_state(self, portlbl, state):
         """
