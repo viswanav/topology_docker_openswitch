@@ -22,6 +22,8 @@ OpenSwitch Test for vlan related configurations.
 from __future__ import unicode_literals, absolute_import
 from __future__ import print_function, division
 
+from pytest import mark
+
 from .helpers import wait_until_interface_up
 
 
@@ -43,6 +45,7 @@ ops1:8 -- hs2:1
 """
 
 
+@mark.skip(True, reason='The openswitch image does not work consistently.')
 def test_vlan(topology):
     """
     Test that a vlan configuration is functional with a OpenSwitch switch.

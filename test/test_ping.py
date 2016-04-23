@@ -23,6 +23,7 @@ from __future__ import unicode_literals, absolute_import
 from __future__ import print_function, division
 
 from time import sleep
+from pytest import mark
 
 from .helpers import wait_until_interface_up
 
@@ -47,6 +48,7 @@ sw2:4 -- hs2:1
 """
 
 
+@mark.skip(True, reason='The openswitch image does not work consistently.')
 def test_ping(topology):
     """
     Set network addresses and static routes between nodes and ping h2 from h1.
