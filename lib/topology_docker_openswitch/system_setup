@@ -29,11 +29,12 @@ PLEASE NOTE:
 from __future__ import unicode_literals, absolute_import
 from __future__ import print_function, division
 
+from time import sleep
 from os.path import exists
-from threading import sleep
 from logging import getLogger
 from json import loads, dumps
 from socket import gethostname, socket, AF_UNIX, SOCK_STREAM
+from subprocess import check_call, check_output, CalledProcessError  # noqa
 
 
 __version__ = '1.0.0'
@@ -63,16 +64,16 @@ class Ovsdb(object):
             ],
             'id': id(self)
         }
-        self.sock = socket(AF_UNIX, SOCK_STREAM)
-        self.sock.connect(Ovsdb.OVSDB_SOCK)
+        self._sock = socket(AF_UNIX, SOCK_STREAM)
+        self._sock.connect(Ovsdb.OVSDB_SOCK)
 
     def cur_cfg_is_set(self):
         """
         Check that the query for the cur_hw succeed.
         """
 
-        self.sock.send(dumps(self.query))
-        response = loads(self.sock.recv(4096))
+        self._sock.send(dumps(self.query))
+        response = loads(self._sock.recv(4096))
         try:
             return response['result'][0]['rows'][0]['cur_hw'] == 1
         except IndexError:
@@ -92,7 +93,7 @@ def check_until_timeout(check, check_name, exit_code, timeout):
     """
     log.info('Starting check: {}'.format(check_name))
 
-    for i in range(0, timeout):
+    for i in range(0, timeout * 10):
         if check():
             log.info('Check {} passed. Continue.'.format(check_name))
             return True
@@ -123,12 +124,12 @@ def pre_checks(timeout):
         (
             lambda: exists('/var/run/netns/swns'),
             'SWNS_NETNS_CREATED',
-            -100
+            100
         ),
         (
             lambda: exists('/etc/openswitch/hwdesc'),
             'HWDESC_SYMLINK_CREATED',
-            -101
+            110
         )
     ]
 
@@ -141,26 +142,35 @@ def post_checks(timeout):
     Checks that needs to be executed
     """
 
+    def switchd_status_is_active():
+        # FIXME: Implement
+        pass
+
     post_checks = [
         (
             lambda: exists(Ovsdb.OVSDB_SOCK),
             'OVSDB_SOCKET_CREATED',
-            -200
+            200
         ),
         (
             lambda: exists('/var/run/openvswitch/ops-switchd.pid'),
-            'SWITCH_PID_FILE_CREATED',
-            -201
+            'SWITCHD_PID_FILE_CREATED',
+            210
         ),
         (
             lambda: gethostname() != 'switch',
             'SWITCH_HOSTNAME_SET',
-            -202
+            220
         ),
         (
             lambda: Ovsdb().cur_cfg_is_set,
             'CUR_CFG_SET',
-            -203
+            230
+        ),
+        (
+            lambda: switchd_status_is_active,
+            'SWITCHD_STATUS_ACTIVE',
+            240
         )
     ]
 
@@ -199,7 +209,7 @@ def parse_args(argv=None):
     parser.add_argument(
         '--checks-timeout',
         help='Timeout for a check to be ready in seconds',
-        default=100,
+        default=30,
         type=int
     )
     parser.add_argument(
@@ -220,11 +230,38 @@ def parse_args(argv=None):
 
 
 def validate_args(args):
+    """
+    Validate that arguments are valid.
+
+    :param args: An arguments namespace.
+    :type args: :py:class:`argparse.Namespace`
+    :return: The validated namespace.
+    :rtype: :py:class:`argparse.Namespace`
+    """
+
+    import logging
+
+    format = '%(asctime)s:::%(levelname)s:::%(message)s'
+    levels = {
+        0: logging.ERROR,
+        1: logging.WARNING,
+        2: logging.INFO,
+        3: logging.DEBUG,
+    }
+
+    level = levels.get(args.verbose, logging.DEBUG)
+    logging.basicConfig(format=format, level=level)
+
+    log.info(
+        'Topology Modular - OpenSwitch Support Node '
+        'Setup Script is starting... '
+    )
+    log.debug('Raw arguments:\n{}'.format(args))
 
     if args.skip_boot_checks:
         log.warning(
-            'Disabling this checks can cause commands to fail and race '
-            'conditions to crawl your tests. You have been warned.'
+            'Boot checks are disabled. This checks can cause commands to fail '
+            'and race conditions to crawl your tests. You have been warned.'
         )
 
     return args
@@ -235,14 +272,14 @@ def main():
 
     if not args.skip_boot_checks:
         log.info('Executing pre-interfaces checks...')
-        pre_checks(args.timeout)
+        pre_checks(args.checks_timeout)
 
     log.info('Creating interfaces...')
     create_interfaces()
 
     if not args.skip_boot_checks:
         log.info('Executing post-interfaces checks...')
-        post_checks(args.timeout)
+        post_checks(args.checks_timeout)
 
 
 if __name__ == '__main__':

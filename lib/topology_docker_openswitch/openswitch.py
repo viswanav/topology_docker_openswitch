@@ -60,7 +60,7 @@ class OpenSwitchNode(DockerNode):
     def __init__(
             self, identifier,
             image='topology/ops:latest', binds=None,
-            skip_boot_checks=False, boot_checks_timeout=100,
+            skip_boot_checks=False, boot_checks_timeout=30,
             **kwargs):
 
         # Add binded directories
@@ -142,6 +142,7 @@ class OpenSwitchNode(DockerNode):
         if self._skip_boot_checks:
             cmd.append('--skip-boot-checks')
 
+        # log.info('Booting OpenSwitch image {}. Please wait...'.format())
         setup = Popen(cmd, stdin=PIPE, stdout=PIPE)
         stdout, stderr = setup.communicate()
         if stdout:
