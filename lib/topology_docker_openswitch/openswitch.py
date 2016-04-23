@@ -142,7 +142,9 @@ class OpenSwitchNode(DockerNode):
         if self._skip_boot_checks:
             cmd.append('--skip-boot-checks')
 
-        # log.info('Booting OpenSwitch image {}. Please wait...'.format())
+        log.info(
+            'Starting OpenSwitch image {}. Please wait...'.format(self._image)
+        )
         setup = Popen(cmd, stdin=PIPE, stdout=PIPE)
         stdout, stderr = setup.communicate()
         if stdout:

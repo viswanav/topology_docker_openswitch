@@ -29,6 +29,7 @@ PLEASE NOTE:
 from __future__ import unicode_literals, absolute_import
 from __future__ import print_function, division
 
+from re import search
 from time import sleep
 from os.path import exists
 from logging import getLogger
@@ -120,7 +121,12 @@ def create_interfaces(available):
 
 
 def pre_checks(timeout):
-    pre_checks = [
+    """
+    Checks that needs to be executed BEFORE the creation of the interfaces.
+
+    :param int timeout: Timeout for checks in seconds.
+    """
+    checks_list = [
         (
             lambda: exists('/var/run/netns/swns'),
             'SWNS_NETNS_CREATED',
@@ -133,20 +139,28 @@ def pre_checks(timeout):
         )
     ]
 
-    for check, check_name, exit_code in pre_checks:
+    for check, check_name, exit_code in checks_list:
         check_until_timeout(check, check_name, exit_code, timeout)
 
 
 def post_checks(timeout):
     """
-    Checks that needs to be executed
+    Checks that needs to be executed AFTER the creation of the interfaces.
+
+    :param int timeout: Timeout for checks in seconds.
     """
 
     def switchd_status_is_active():
-        # FIXME: Implement
-        pass
+        """
+        Custom check to verify that switchd is active.
+        """
+        try:
+            output = check_output(['systemctl', 'status', 'switchd'])
+        except CalledProcessError as error:
+            output = error.output
+        return search(r'Active: active \(running\)', output)
 
-    post_checks = [
+    checks_list = [
         (
             lambda: exists(Ovsdb.OVSDB_SOCK),
             'OVSDB_SOCKET_CREATED',
@@ -174,7 +188,7 @@ def post_checks(timeout):
         )
     ]
 
-    for check, check_name, exit_code in post_checks:
+    for check, check_name, exit_code in checks_list:
         check_until_timeout(check, check_name, exit_code, timeout)
 
 
@@ -194,6 +208,7 @@ def parse_args(argv=None):
             'Topology Modular - OpenSwitch Support Node Setup Script'
         )
     )
+
     parser.add_argument(
         '-v', '--verbose',
         help='Increase verbosity level',
