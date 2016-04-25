@@ -128,23 +128,16 @@ def create_interfaces(available):
     :return: A ordered dictionary that maps the original name of the interface
      with the new name.
     """
-    # FIXME: IMPLEMENT!!!
-    """
+
     import yaml
 
     # Read ports from hardware description
-    with open('{}/ports.yaml'.format(hwdesc_dir), 'r') as fd:
+    ports_file = '/etc/openswitch/hwdesc/ports.yaml'
+    with open(ports_file, 'r') as fd:
         ports_hwdesc = yaml.load(fd)
     hwports = [str(p['name']) for p in ports_hwdesc['ports']]
 
-    # Get list of already created ports
-    not_in_swns = check_output(shsplit(
-        'ls /sys/class/net/'
-    )).split()
-    in_swns = check_output(shsplit(
-        'ip netns exec swns ls /sys/class/net/'
-    )).split()
-
+    # Command templates
     create_cmd_tpl = 'ip tuntap add dev {hwport} mode tap'
     netns_cmd_tpl = 'ip link set {hwport} netns swns'
     rename_int = 'ip link set {portlbl} name {hwport}'
@@ -180,7 +173,6 @@ def create_interfaces(available):
         check_call(shsplit(netns_cmd_tpl.format(hwport=hwport)))
     check_call(shsplit('touch /tmp/ops-virt-ports-ready'))
     logging.info('  - Ports readiness notified to the image')
-    """
 
 
 def pre_checks(timeout):

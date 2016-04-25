@@ -54,6 +54,8 @@ class OpenSwitchNode(DockerNode):
     See :class:`topology_docker.node.DockerNode`.
 
     :param int boot_checks_timeout: Timeout (in seconds) for a check to pass.
+    :param bool remove_on_boot_failure: If the image boot stage failed, remove
+     the container or leave it for debugging.
     :param str skip_boot_checks: Coma-separated list of checks to skip.
      Use ``ALL`` to skip all boot checks. Boot checks determine if the image is
      ready to be tested. See the class attribute ``OpenSwitch.ALL_CHECKS``
@@ -81,7 +83,9 @@ class OpenSwitchNode(DockerNode):
     def __init__(
             self, identifier,
             image='topology/ops:latest', binds=None,
-            boot_checks_timeout=30, skip_boot_checks=None,
+            remove_on_boot_failure=True,
+            boot_checks_timeout=30,
+            skip_boot_checks=None,
             **kwargs):
 
         # Add binded directories
@@ -99,8 +103,12 @@ class OpenSwitchNode(DockerNode):
             **kwargs
         )
 
+        # Private attributes
+        self._boot_failed = False
+
         # Save other parameters
         self._boot_checks_timeout = boot_checks_timeout
+        self._remove_on_boot_failure = remove_on_boot_failure
         self._skip_boot_checks = skip_boot_checks
 
         # Interpret and validate boot checks deactivations
@@ -166,6 +174,7 @@ class OpenSwitchNode(DockerNode):
         """
         Setup OpenSwitch image.
         """
+        # Read available ports
         ports_file = join(self.shared_dir, 'ports.json')
 
         # Write boot script input data
@@ -178,32 +187,61 @@ class OpenSwitchNode(DockerNode):
         destination = join(self.shared_dir, 'system_setup')
         copy(source, destination)
 
-        # Execute boot script
+        # Determine call
         cmd = [
             'docker', 'exec', self.container_id,
             'python', '/tmp/system_setup',
             '--available', '/tmp/ports.json',
             '--checks-timeout', self._boot_checks_timeout
-        ]  # FIXME: Relay verbosity level
+        ]
 
         if self._skip_boot_checks is not None:
             cmd.append('--skip-boot-checks')
             cmd.append(','.join(self._skip_boot_checks))
 
+        # Determine logging level for system_setup script
+        import logging
+        levels = {
+            logging.ERROR: 0,
+            logging.WARNING: 1,
+            logging.INFO: 2,
+            logging.DEBUG: 3,
+        }
+        current_level = log.getEffectiveLevel()
+        if current_level not in levels:
+            log.warning(
+                'Unhandled logging level {}. '
+                'Assuming logging.DEBUG for system_setup call.'.format(
+                    current_level
+                )
+            )
+
+        target_level = levels.get(current_level, logging.DEBUG)
+        if target_level > 0:
+            cmd.append('-{}'.format('v' * target_level))
+
         log.info(
-            'Starting OpenSwitch image {}. Please wait...'.format(self._image)
+            'Booting OpenSwitch image {}. Please wait...'.format(self._image)
         )
+
+        # Execute boot script
         # FIXME: Provide logging line by line
         setup = Popen(cmd, stdin=PIPE, stdout=PIPE)
         stdout, stderr = setup.communicate()
         if stdout:
+            log.info('---- system_setup stdout::')
             log.info(stdout)
         if stderr:
+            log.error('!!!! system_setup stderr::')
             log.error(stderr)
 
         # FIXME: Determine return code and show relevant message
         """
         if setup.returncode != 0:
+
+            # Mark container as boot failed
+            self._boot_failed = True
+
             if setup.returncode not in OpenSwitch.ALL_CHECKS.values():
                 raise RuntimeException('Setup ')
 
@@ -222,6 +260,22 @@ class OpenSwitchNode(DockerNode):
             new_mapping = loads(fd.read(), object_pairs_hook=OrderedDict)
             self.ports.clear()
             self.ports.update(new_mapping)
+
+    def stop(self):
+        """
+        Request container to stop.
+
+        See :meth:`DockerNode.stop` for more information.
+        """
+        if self._boot_failed and not self._remove_on_boot_failure:
+            log.warning(
+                '**NOT** removing container {} ({}) as it failed to boot '
+                'and \'remove_on_boot_failure\' feature was set.'.format(
+                    self.identifier, self.container_id
+                )
+            )
+            return
+        super(OpenSwitchNode, self).stop()
 
     def set_port_state(self, portlbl, state):
         """

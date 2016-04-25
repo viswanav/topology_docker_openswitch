@@ -1,7 +1,6 @@
 .. toctree::
    :hidden:
 
-   developer
    topology_docker_openswitch/topology_docker_openswitch
 
 ===================================
@@ -9,13 +8,6 @@ openswitch node for topology_docker
 ===================================
 
 A Topology OpenSwitch Node for topology_docker.
-
-
-Documentation
-=============
-
-- :doc:`Developer Guide. <developer>`
-- :doc:`Internal Documentation Reference. <topology_docker_openswitch/topology_docker_openswitch>`
 
 
 Development
