@@ -42,7 +42,7 @@ from socket import AF_UNIX, SOCK_STREAM, socket, gethostname
 
 import yaml
 
-config_timeout = 100
+config_timeout = 300
 swns_netns = '/var/run/netns/swns'
 hwdesc_dir = '/etc/openswitch/hwdesc'
 db_sock = '/var/run/openvswitch/db.sock'

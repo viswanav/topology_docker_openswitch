@@ -9,5 +9,5 @@ autoapi
 topology_lib_ping
 topology_lib_ip
 
-# -e git+https://github.com/HPENetworking/topology_docker.git@purge_nodes#egg=topology_docker
+-e git+https://github.com/HPENetworking/topology_docker.git@master#egg=topology_docker
 -e git+https://git.openswitch.net/openswitch/ops-topology-lib-vtysh@8c6af11bf84813324a6518ccda101712297cd357#egg=topology_lib_vtysh
