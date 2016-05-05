@@ -268,17 +268,17 @@ class OpenSwitchNode(DockerNode):
         with open(setup_script, 'w') as fd:
             fd.write(SETUP_SCRIPT)
 
-        self._docker_exec('python /tmp/openswitch_setup.py -d')
+        # self._docker_exec('python /tmp/openswitch_setup.py -d')
 
         # Read back port mapping
-        port_mapping = '{}/port_mapping.json'.format(self.shared_dir)
-        with open(port_mapping, 'r') as fd:
-            mappings = loads(fd.read())
+        # port_mapping = '{}/port_mapping.json'.format(self.shared_dir)
+        # with open(port_mapping, 'r') as fd:
+        #     mappings = loads(fd.read())
 
-        if hasattr(self, 'ports'):
-            self.ports.update(mappings)
-            return
-        self.ports = mappings
+        # if hasattr(self, 'ports'):
+        #     self.ports.update(mappings)
+        #     return
+        # self.ports = mappings
 
     def set_port_state(self, portlbl, state):
         """
