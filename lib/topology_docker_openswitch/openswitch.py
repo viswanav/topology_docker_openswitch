@@ -26,6 +26,8 @@ from __future__ import print_function, division
 
 from json import loads
 
+from subprocess import check_call
+
 from topology_docker.node import DockerNode
 from topology_docker.shell import DockerShell, DockerBashShell
 
@@ -95,8 +97,11 @@ def create_interfaces():
                 **locals()
             )
         )
-        check_call(shsplit(rename_int.format(**locals())))
-        check_call(shsplit(netns_cmd_tpl.format(hwport=hwport)))
+        try:
+            check_call(shsplit(rename_int.format(**locals())))
+            check_call(shsplit(netns_cmd_tpl.format(hwport=hwport)))
+        except:
+            raise Exception('Failed to map ports with port labels')
 
     # Writting mapping to file
     with open('/tmp/port_mapping.json', 'w') as json_file:
@@ -108,8 +113,15 @@ def create_interfaces():
             continue
 
         logging.info('  - Port {} created.'.format(hwport))
-        check_call(shsplit(create_cmd_tpl.format(hwport=hwport)))
-        check_call(shsplit(netns_cmd_tpl.format(hwport=hwport)))
+        try:
+            check_call(shsplit(create_cmd_tpl.format(hwport=hwport)))
+        except:
+            raise Exception('Failed to create tuntap')
+
+        try:
+            check_call(shsplit(netns_cmd_tpl.format(hwport=hwport)))
+        except:
+            raise Exception('Failed to move port to swns netns')
     check_call(shsplit('touch /tmp/ops-virt-ports-ready'))
     logging.info('  - Ports readiness notified to the image')
 
@@ -192,6 +204,42 @@ if __name__ == '__main__':
 """
 
 
+PROCESS_LOG = """
+#!/bin/bash
+
+MAXTIME=30
+COUNTER=0
+IS_SWITCH_UP=0
+
+while [ $IS_SWITCH_UP -ne 1 ] && [ $COUNTER -lt $MAXTIME ]
+do
+    CUR_HW=`ovsdb-client transact '["OpenSwitch",{ "op": "select","table": "System","where": [ ],"columns" : ["cur_hw"]}]' | sed -e 's/[{}]/''/g' -e 's/\\]//g' | sed s/\\]//g | awk -F: '{print $3}'`  # noqa
+    /bin/ls /var/run/openvswitch/ops-switchd.pid
+    SWITCHD="$?"
+    if [ $((CUR_HW)) -eq 1 ] && [ "$SWITCHD" = 0 ]; then
+        echo "ops-switchd has come up"
+        IS_SWITCH_UP=1
+    fi
+    if [ $IS_SWITCH_UP -ne 1 ]; then
+        let COUNTER=COUNTER+1
+        sleep 1
+    fi
+done
+
+if [ $IS_SWITCH_UP -ne 1 ]; then
+    echo "Script Run : Failure" >> /tmp/logs
+    echo "CUR_HW column : " $CUR_HW >> /tmp/logs
+    SWITCHD="Down"
+    echo "Switch state : " $SWITCHD >> /tmp/logs
+    systemctl status >> /tmp/logs
+    systemctl --state=failed --all >> /tmp/logs
+    ps -ef >> /tmp/logs
+else
+    echo "Script Run : Success" >> /tmp/logs
+fi
+"""
+
+
 class OpenSwitchNode(DockerNode):
     """
     Custom OpenSwitch node for the Topology Docker platform engine.
@@ -263,12 +311,24 @@ class OpenSwitchNode(DockerNode):
         #. Assign an interface to each port label.
         #. Create remaining interfaces.
         """
+
+        # Write the log gathering script
+        process_log = '{}/process_log.sh'.format(self.shared_dir)
+        with open(process_log, "w") as fd:
+            fd.write(PROCESS_LOG)
+        check_call('chmod 755 {}/process_log.sh'.format(self.shared_dir),
+                   shell=True)
+
         # Write and execute setup script
         setup_script = '{}/openswitch_setup.py'.format(self.shared_dir)
         with open(setup_script, 'w') as fd:
             fd.write(SETUP_SCRIPT)
 
-        self._docker_exec('python /tmp/openswitch_setup.py -d')
+        try:
+            self._docker_exec('python /tmp/openswitch_setup.py -d')
+        except Exception as e:
+            self._docker_exec('/bin/bash /tmp/process_log.sh')
+            raise e
 
         # Read back port mapping
         port_mapping = '{}/port_mapping.json'.format(self.shared_dir)
