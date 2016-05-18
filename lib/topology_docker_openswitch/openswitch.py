@@ -25,7 +25,6 @@ from __future__ import unicode_literals, absolute_import
 from __future__ import print_function, division
 
 from json import loads
-
 from subprocess import check_call
 
 from topology_docker.node import DockerNode
@@ -206,37 +205,16 @@ if __name__ == '__main__':
 
 PROCESS_LOG = """
 #!/bin/bash
+ovs-vsctl list Daemon >> /tmp/logs
+echo "Coredump -->" >> /tmp/logs
+coredumpctl gdb >> /tmp/logs
+echo "All the running processes:" >> /tmp/logs
+ps -aef >> /tmp/logs
 
-MAXTIME=30
-COUNTER=0
-IS_SWITCH_UP=0
+systemctl status >> /tmp/systemctl
+systemctl --state=failed --all >> /tmp/systemctl
 
-while [ $IS_SWITCH_UP -ne 1 ] && [ $COUNTER -lt $MAXTIME ]
-do
-    CUR_HW=`ovsdb-client transact '["OpenSwitch",{ "op": "select","table": "System","where": [ ],"columns" : ["cur_hw"]}]' | sed -e 's/[{}]/''/g' -e 's/\\]//g' | sed s/\\]//g | awk -F: '{print $3}'`  # noqa
-    /bin/ls /var/run/openvswitch/ops-switchd.pid
-    SWITCHD="$?"
-    if [ $((CUR_HW)) -eq 1 ] && [ "$SWITCHD" = 0 ]; then
-        echo "ops-switchd has come up"
-        IS_SWITCH_UP=1
-    fi
-    if [ $IS_SWITCH_UP -ne 1 ]; then
-        let COUNTER=COUNTER+1
-        sleep 1
-    fi
-done
-
-if [ $IS_SWITCH_UP -ne 1 ]; then
-    echo "Script Run : Failure" >> /tmp/logs
-    echo "CUR_HW column : " $CUR_HW >> /tmp/logs
-    SWITCHD="Down"
-    echo "Switch state : " $SWITCHD >> /tmp/logs
-    systemctl status >> /tmp/logs
-    systemctl --state=failed --all >> /tmp/logs
-    ps -ef >> /tmp/logs
-else
-    echo "Script Run : Success" >> /tmp/logs
-fi
+ovsdb-client dump >> /tmp/ovsdb_dump
 """
 
 
@@ -327,7 +305,19 @@ class OpenSwitchNode(DockerNode):
         try:
             self._docker_exec('python /tmp/openswitch_setup.py -d')
         except Exception as e:
+            check_call('touch {}/logs'.format(self.shared_dir), shell=True)
+            check_call('chmod 766 {}/logs'.format(self.shared_dir),
+                       shell=True)
             self._docker_exec('/bin/bash /tmp/process_log.sh')
+            check_call(
+                'tail -n 2000 /var/log/syslog > {}/syslog'.format(
+                    self.shared_dir
+                ), shell=True)
+            check_call(
+                'docker ps -a >> {}/logs'.format(self.shared_dir),
+                shell=True
+            )
+            check_call('cat {}/logs'.format(self.shared_dir), shell=True)
             raise e
 
         # Read back port mapping
