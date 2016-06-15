@@ -35,7 +35,7 @@ SETUP_SCRIPT = """\
 import logging
 from sys import argv
 from time import sleep
-from os.path import exists
+from os.path import exists, split
 from json import dumps, loads
 from shlex import split as shsplit
 from subprocess import check_call, check_output
@@ -103,7 +103,7 @@ def create_interfaces():
             raise Exception('Failed to map ports with port labels')
 
     # Writting mapping to file
-    shared_dir_tmp = str(__file__).split('openswitch_setup.py')[0]
+    shared_dir_tmp = split(__file__)[0]
     with open('{}/port_mapping.json'.format(shared_dir_tmp), 'w') as json_file:
         json_file.write(dumps(mapping_ports))
 
