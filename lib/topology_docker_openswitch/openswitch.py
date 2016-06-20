@@ -35,7 +35,7 @@ SETUP_SCRIPT = """\
 import logging
 from sys import argv
 from time import sleep
-from os.path import exists
+from os.path import exists, split
 from json import dumps, loads
 from shlex import split as shsplit
 from subprocess import check_call, check_output
@@ -103,7 +103,8 @@ def create_interfaces():
             raise Exception('Failed to map ports with port labels')
 
     # Writting mapping to file
-    with open('/tmp/port_mapping.json', 'w') as json_file:
+    shared_dir_tmp = split(__file__)[0]
+    with open('{}/port_mapping.json'.format(shared_dir_tmp), 'w') as json_file:
         json_file.write(dumps(mapping_ports))
 
     for hwport in hwports:
@@ -303,12 +304,14 @@ class OpenSwitchNode(DockerNode):
             fd.write(SETUP_SCRIPT)
 
         try:
-            self._docker_exec('python /tmp/openswitch_setup.py -d')
+            self._docker_exec('python {}/openswitch_setup.py -d'
+                              .format(self.shared_dir_mount))
         except Exception as e:
             check_call('touch {}/logs'.format(self.shared_dir), shell=True)
             check_call('chmod 766 {}/logs'.format(self.shared_dir),
                        shell=True)
-            self._docker_exec('/bin/bash /tmp/process_log.sh')
+            self._docker_exec('/bin/bash {}/process_log.sh'
+                              .format(self.shared_dir_mount))
             check_call(
                 'tail -n 2000 /var/log/syslog > {}/syslog'.format(
                     self.shared_dir
