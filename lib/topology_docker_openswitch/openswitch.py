@@ -245,6 +245,7 @@ class OpenSwitchNode(DockerNode):
         super(OpenSwitchNode, self).__init__(
             identifier, image=image, command='/sbin/init',
             binds=';'.join(container_binds), hostname='switch',
+            environment={'container': 'docker'},
             **kwargs
         )
 
