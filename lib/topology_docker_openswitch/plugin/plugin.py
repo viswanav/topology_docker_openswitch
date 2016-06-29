@@ -34,7 +34,7 @@ def pytest_runtest_teardown(item):
             logs_path = '/var/log/messages'
             for node in topology.nodes:
                 node_obj = topology.get(node)
-                if node_obj.metadata['type'] == 'openswitch':
+                if node_obj.metadata.get('type', None) == 'openswitch':
                     shared_dir = node_obj.shared_dir
                     try:
                         node_obj.send_command(
