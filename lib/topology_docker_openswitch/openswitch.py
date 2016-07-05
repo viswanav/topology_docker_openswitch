@@ -38,7 +38,7 @@ from time import sleep
 from os.path import exists, split
 from json import dumps, loads
 from shlex import split as shsplit
-from subprocess import check_call, check_output
+from subprocess import check_call, check_output, call
 from socket import AF_UNIX, SOCK_STREAM, socket, gethostname
 
 import yaml
@@ -137,6 +137,10 @@ def cur_cfg_is_set():
     except IndexError:
         return 0
 
+def ops_switchd_is_active():
+    is_active = call(["systemctl", "is-active", "switchd.service"])
+    return is_active == 0
+
 def main():
 
     if '-d' in argv:
@@ -180,6 +184,16 @@ def main():
             break
     else:
         raise Exception('Timed out while waiting for switchd pid.')
+
+    logging.info('Waiting for ops-switchd to become active...')
+    for i in range(0, config_timeout):
+        if not ops_switchd_is_active():
+            sleep(0.1)
+        else:
+            break
+    else:
+        raise Exception('Timed out while waiting for ops-switchd '
+                        'to become active.')
 
     logging.info('Wait for final hostname...')
     for i in range(0, config_timeout):
